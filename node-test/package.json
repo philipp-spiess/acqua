@@ -1,0 +1,11 @@
+{
+	"dependencies": {
+		"ssh2": "^1.16.0",
+		"ssh2-shell-server": "^2.2.3"
+	},
+	"pnpm": {
+		"overrides": {
+			"ssh2": "^1.16.0"
+		}
+	}
+}

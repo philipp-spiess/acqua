@@ -189,8 +189,16 @@ defmodule Sshd.Server do
     ##
     handler_module = Application.fetch_env!(:esshd, :handler)
 
-    spawn_link(Module.concat([handler_module]),
-               :incoming,
-               [username, ssh_publickey, ip, port])
+    pid = spawn(Module.concat([handler_module]),
+                :incoming,
+                [username, ssh_publickey, ip, port])
+    
+    # Link the new process to the controlling process of the SSH connection
+    erlang_pid = Process.whereis(:ssh_connection_handler)
+    if erlang_pid do
+      Process.link(pid)
+    end
+    
+    pid
   end
 end

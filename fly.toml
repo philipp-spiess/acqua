@@ -1,0 +1,41 @@
+# fly.toml app configuration file generated for acqua on 2025-08-01T00:45:47+02:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'acqua'
+primary_region = 'iad'
+
+[build]
+
+[env]
+  PORT = '1234'
+
+[[services]]
+  internal_port = 1234
+  protocol = 'tcp'
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    port = 1234
+
+[http_service]
+  internal_port = 8080
+  force_https = false
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

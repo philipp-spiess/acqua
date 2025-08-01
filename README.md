@@ -15,7 +15,7 @@ A collaborative fish aquarium accessible via SSH, rewritten in Elixir from the o
 ### Modules
 
 - **`SshAquarium.SshServer`**: Main SSH server GenServer that manages the daemon
-- **`SshAquarium.SshShell`**: Handles individual SSH shell connections
+- **`SshAquarium.ShellHandler`**: Handles individual SSH shell connections using esshd
 - **`SshAquarium.SharedAquarium`**: Manages shared aquarium state and fish animations
 - **`SshAquarium.KittyGraphics`**: Implements Kitty graphics protocol for fish rendering
 
@@ -64,7 +64,7 @@ A collaborative fish aquarium accessible via SSH, rewritten in Elixir from the o
 
 ### SSH Connection Flow
 1. User connects via SSH to port 1234
-2. `SshAquarium.SshShell.start_shell/3` is called for each connection
+2. `SshAquarium.ShellHandler.on_shell/4` is called for each connection
 3. Shell process handles SSH protocol messages and user input
 4. Connection is registered with `SharedAquarium` for broadcasting
 

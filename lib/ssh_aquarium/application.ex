@@ -11,18 +11,22 @@ defmodule SshAquarium.Application do
       # Start the shared aquarium first
       {SshAquarium.SharedAquarium, []},
       # Start the SSH server
-      SshAquarium.SshServer
+      SshAquarium.SshServer,
+      # Health server for monitoring
+      {SshAquarium.HealthServer, []}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: SshAquarium.Supervisor]
+
     case Supervisor.start_link(children, opts) do
       {:ok, pid} = result ->
         # Store the aquarium PID for the shell handler
         aquarium_pid = get_child_pid(pid, SshAquarium.SharedAquarium)
         :persistent_term.put({__MODULE__, :aquarium_pid}, aquarium_pid)
         result
+
       error ->
         error
     end

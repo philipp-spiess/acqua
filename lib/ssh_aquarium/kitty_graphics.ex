@@ -115,6 +115,16 @@ defmodule SshAquarium.KittyGraphics do
     row = trunc(fish.py / terminal_config.cell_height) + 1
     y_offset = rem(trunc(fish.py), terminal_config.cell_height)
     
+    # Debug log first fish rendering
+    if fish.id == 1 do
+      Logger.debug("Fish #1 render details:")
+      Logger.debug("  - Pixel position: (#{Float.round(fish.px, 2)}, #{Float.round(fish.py, 2)})")
+      Logger.debug("  - Cell size: #{terminal_config.cell_width}x#{terminal_config.cell_height}")
+      Logger.debug("  - Calculated cell position: col=#{col}, row=#{row}")
+      Logger.debug("  - Pixel offsets: x=#{x_offset}, y=#{y_offset}")
+      Logger.debug("  - Image cells: #{image_cell_width}x#{image_cell_height}")
+    end
+    
     place_image(current_image_id, fish.placement_id, [
       col: col,
       row: row,
@@ -125,7 +135,7 @@ defmodule SshAquarium.KittyGraphics do
     ])
   end
 
-  def handle_direction_change(fish, previous_dx, terminal_config) do
+  def handle_direction_change(fish, previous_dx, _terminal_config) do
     # Check if direction changed
     current_facing_right = fish.dx > 0
     previous_facing_right = previous_dx > 0

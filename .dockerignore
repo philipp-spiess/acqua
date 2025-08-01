@@ -1,0 +1,58 @@
+# flyctl launch added from .elixir_ls/.gitignore
+.elixir_ls/**/*
+
+# flyctl launch added from .gitignore
+# The directory Mix will write compiled artifacts to.
+_build
+
+# If you run "mix test --cover", coverage assets end up here.
+cover
+
+# The directory Mix downloads your dependencies sources to.
+deps
+
+# Where third-party dependencies like ExDoc output generated docs.
+doc
+
+# If the VM crashes, it generates a dump, let's ignore it too.
+**/erl_crash.dump
+
+# Also ignore archive artifacts (built via "mix archive.build").
+**/*.ez
+
+# Ignore package tarball (built via "mix hex.build").
+**/ssh_aquarium-*.tar
+
+# Temporary files, for example, from tests.
+tmp
+
+# flyctl launch added from old-node-tests/.gitignore
+old-node-tests/**/node_modules
+old-node-tests/**/ssh_keys
+
+# flyctl launch added from old-node-tests/node_modules/buildcheck/.gitignore
+old-node-tests/node_modules/buildcheck/**/.eslintcache
+old-node-tests/node_modules/buildcheck/**/**/node_modules/**
+old-node-tests/node_modules/buildcheck/package-lock.json
+
+# flyctl launch added from old-node-tests/node_modules/cpu-features/deps/cpu_features/.gitignore
+# Build folders
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/build
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/cmake_build
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/build_cross
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/cmake-build-*
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/out
+
+# IDEs / CI temp files
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/.idea
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/.vagrant
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/.vscode
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/.vs
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/*.swp
+
+# Bazel artifacts
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/**/bazel-*
+
+# Per-user bazelrc files
+old-node-tests/node_modules/cpu-features/deps/cpu_features/**/user.bazelrc
+fly.toml

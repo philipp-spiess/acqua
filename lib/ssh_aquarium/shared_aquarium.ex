@@ -16,7 +16,7 @@ defmodule SshAquarium.SharedAquarium do
   ]
 
   @fish_per_connection 100
-  @animation_interval 16  # ~60 FPS
+  @animation_interval 17  # ~60 FPS (16.66ms rounded up)
 
   # Client API
 
@@ -34,6 +34,10 @@ defmodule SshAquarium.SharedAquarium do
 
   def handle_mouse_click(pid, connection_id, mouse_data) do
     GenServer.cast(pid, {:mouse_click, connection_id, mouse_data})
+  end
+
+  def update_terminal_config(pid, term_columns, term_rows, cell_width, cell_height) do
+    GenServer.cast(pid, {:update_terminal_config, term_columns, term_rows, cell_width, cell_height})
   end
 
   # Server Callbacks
@@ -59,45 +63,58 @@ defmodule SshAquarium.SharedAquarium do
     
     Logger.info("Connection #{connection_id} joined. Total viewers: #{MapSet.size(new_viewers)}")
     
-    # If this is the first viewer, detect terminal and start animation
+    # If this is the first viewer, detect terminal and wait for response before starting
     state = 
       if MapSet.size(state.viewers) == 0 do
-        # Use more reasonable defaults - most terminals use 8x16 or similar
-        terminal_config = %{
-          term_columns: 80,
-          term_rows: 24,
-          cell_width: 8,
-          cell_height: 16
-        }
+        Logger.info("First viewer - detecting terminal and starting animation")
         
-        # Add fish for this connection
-        fish = add_fish_for_connection(state.fish, terminal_config, connection_id, @fish_per_connection, state.fish_counter)
+        # TEST: Send a simple hello message first
+        Logger.info("TEST: Sending hello message to verify communication")
+        send(viewer_pid, {:aquarium_broadcast, "Hello from Elixir SSH Aquarium!\r\n"})
+        send(viewer_pid, {:aquarium_broadcast, "If you see this, messages are working.\r\n"})
         
-        # Start animation
-        {:ok, timer_ref} = :timer.send_interval(@animation_interval, self(), :animate)
+        # Send initial setup like Node.js does before detection
+        send(viewer_pid, {:aquarium_broadcast, "\x1b[?25l"})    # Hide cursor
+        send(viewer_pid, {:aquarium_broadcast, "\x1b[?1000h"})  # Enable mouse click reporting
+        send(viewer_pid, {:aquarium_broadcast, "\x1b[?1002h"})  # Enable mouse drag reporting
+        send(viewer_pid, {:aquarium_broadcast, "\x1b[2J"})      # Clear screen
         
-        # Trigger immediate animation frame
-        send(self(), :animate)
+        # Upload images like Node.js
+        fish_commands = SshAquarium.KittyGraphics.get_fish_images()
+        Enum.each(fish_commands, fn command ->
+          send(viewer_pid, {:aquarium_broadcast, command})
+        end)
         
+        # Send terminal detection query like Node.js does
+        Logger.info("Sending terminal detection query to first viewer")
+        send(viewer_pid, {:aquarium_broadcast, "\x1b[14t"})
+        
+        # Set a timeout like Node.js (2 seconds)
+        Logger.info("Setting 2-second timeout for terminal detection")
+        Process.send_after(self(), {:terminal_detection_timeout, connection_id}, 2000)
+        
+        # Set up state to wait for terminal detection
         %{state | 
-          terminal_config: terminal_config,
-          fish: fish,
-          animation_timer: timer_ref,
-          fish_counter: state.fish_counter + @fish_per_connection
+          terminal_config: :detecting,  # Mark as detecting
+          fish_counter: 0  # Will be set when terminal is detected
         }
       else
-        # Add fish for new connection
-        if state.terminal_config do
+        # Add fish for new connection (like Node.js additional viewers)
+        if is_map(state.terminal_config) do
+          Logger.info("Adding 100 fish and viewer to existing aquarium")
+          
+          # Add fish for this connection
           fish = add_fish_for_connection(state.fish, state.terminal_config, connection_id, @fish_per_connection, state.fish_counter)
           
-          # Send setup to new viewer
-          send_viewer_setup(viewer_pid)
+          # Send complete setup to new viewer (like Node.js)
+          send_viewer_setup(viewer_pid, state.terminal_config)
           
           %{state | 
             fish: fish,
             fish_counter: state.fish_counter + @fish_per_connection
           }
         else
+          # Terminal still detecting, add viewer but no fish yet
           state
         end
       end
@@ -123,7 +140,7 @@ defmodule SshAquarium.SharedAquarium do
     
     # Create poof effects for removed fish
     Enum.each(fish_to_remove, fn {_fish_id, fish} ->
-      create_poof_effect(fish, state.terminal_config)
+      create_poof_effect(fish, state.terminal_config, new_viewers)
     end)
     
     state = %{state | viewers: new_viewers, fish: Map.new(remaining_fish)}
@@ -148,15 +165,78 @@ defmodule SshAquarium.SharedAquarium do
 
   @impl true
   def handle_cast({:mouse_click, connection_id, mouse_data}, state) do
-    if state.terminal_config do
-      handle_mouse_click_internal(connection_id, mouse_data, state.terminal_config, state.fish)
+    if is_map(state.terminal_config) do
+      new_fish = handle_mouse_click_internal(connection_id, mouse_data, state.terminal_config, state.fish)
+      {:noreply, %{state | fish: new_fish}}
+    else
+      {:noreply, state}
     end
-    {:noreply, state}
+  end
+
+  @impl true
+  def handle_cast({:update_terminal_config, term_columns, term_rows, cell_width, cell_height}, state) do
+    cond do
+      state.terminal_config == :detecting ->
+        # First time detection - set up aquarium like Node.js
+        Logger.info("First terminal detection received! Setting up aquarium...")
+        Logger.info("Terminal configuration:")
+        Logger.info("  - Columns: #{term_columns}")
+        Logger.info("  - Rows: #{term_rows}")
+        Logger.info("  - Cell width: #{cell_width} pixels")
+        Logger.info("  - Cell height: #{cell_height} pixels")
+        Logger.info("  - Total canvas: #{term_columns * cell_width}x#{term_rows * cell_height} pixels")
+        
+        terminal_config = %{
+          term_columns: term_columns,
+          term_rows: term_rows,
+          cell_width: cell_width,
+          cell_height: cell_height
+        }
+        
+        # Add fish for all existing connections (like Node.js does)
+        fish = 
+          state.viewers
+          |> MapSet.to_list()
+          |> Enum.with_index(1)
+          |> Enum.reduce(%{}, fn {{connection_id, viewer_pid}, index}, acc ->
+            # Setup viewer (like Node.js does for all viewers)
+            send_viewer_setup(viewer_pid, terminal_config)
+            # Add 100 fish for each connection
+            add_fish_for_connection(acc, terminal_config, connection_id, @fish_per_connection, (index - 1) * @fish_per_connection)
+          end)
+        
+        viewer_count = MapSet.size(state.viewers)
+        
+        # Start animation like Node.js
+        {:ok, timer_ref} = :timer.send_interval(@animation_interval, self(), :animate)
+        send(self(), :animate)
+        
+        {:noreply, %{state | 
+          terminal_config: terminal_config,
+          fish: fish,
+          animation_timer: timer_ref,
+          fish_counter: viewer_count * @fish_per_connection
+        }}
+      
+      is_map(state.terminal_config) ->
+        # Update existing config
+        updated_config = %{state.terminal_config |
+          term_columns: term_columns,
+          term_rows: term_rows,
+          cell_width: cell_width,
+          cell_height: cell_height
+        }
+        Logger.info("Updated terminal config: #{cell_width}x#{cell_height} pixels per cell")
+        {:noreply, %{state | terminal_config: updated_config}}
+      
+      true ->
+        {:noreply, state}
+    end
   end
 
   @impl true
   def handle_info(:animate, state) do
-    if MapSet.size(state.viewers) > 0 and state.terminal_config do
+    if MapSet.size(state.viewers) > 0 and is_map(state.terminal_config) do
       {new_fish, output} = animate_fish(state.fish, state.terminal_config)
       
       if output != "" do
@@ -170,20 +250,48 @@ defmodule SshAquarium.SharedAquarium do
     end
   end
 
+  @impl true
+  def handle_info({:terminal_detection_timeout, _connection_id}, state) do
+    if state.terminal_config == :detecting do
+      Logger.warn("Terminal detection timeout! Using fallback dimensions...")
+      Logger.warn("Fallback config: 80x24 chars, 8x16 pixels per cell")
+      # Use fallback dimensions like Node.js
+      handle_cast({:update_terminal_config, 80, 24, 8, 16}, state)
+    else
+      Logger.debug("Terminal detection timeout received but config already set")
+      {:noreply, state}
+    end
+  end
+
   # Helper Functions
+
 
   defp add_fish_for_connection(existing_fish, terminal_config, connection_id, count, fish_counter) do
     term_pixel_width = terminal_config.term_columns * terminal_config.cell_width
     term_pixel_height = terminal_config.term_rows * terminal_config.cell_height
     
+    Logger.info("Adding #{count} fish for connection #{connection_id}")
+    Logger.info("Canvas dimensions: #{term_pixel_width}x#{term_pixel_height} pixels")
+    Logger.info("Fish image size: 64x36 pixels")
+    Logger.info("Valid fish X range: 0 to #{term_pixel_width - 64}")
+    Logger.info("Valid fish Y range: 0 to #{term_pixel_height - 36}")
+    
     new_fish = 
       for i <- 1..count, into: %{} do
         fish_id = fish_counter + i
+        px = :rand.uniform() * (term_pixel_width - 64)
+        py = :rand.uniform() * (term_pixel_height - 36)
+        
+        # Log first 5 fish positions for debugging
+        if i <= 5 do
+          Logger.debug("Fish ##{fish_id} initial position: (#{Float.round(px, 2)}, #{Float.round(py, 2)})")
+        end
+        
         fish = %{
           id: fish_id,
           owner_id: connection_id,
-          px: :rand.uniform() * (term_pixel_width - 64),
-          py: :rand.uniform() * (term_pixel_height - 36),
+          px: px,
+          py: py,
           dx: (:rand.uniform() - 0.5) * 0.08 * terminal_config.cell_width,
           dy: (:rand.uniform() - 0.5) * 0.02 * terminal_config.cell_height,
           bobbing_time: :rand.uniform() * 100,
@@ -196,18 +304,24 @@ defmodule SshAquarium.SharedAquarium do
     Map.merge(existing_fish, new_fish)
   end
 
-  defp send_viewer_setup(viewer_pid) do
-    # Send initial setup commands to new viewer
-    send(viewer_pid, {:aquarium_broadcast, "\x1b[?25l"})  # Hide cursor
-    send(viewer_pid, {:aquarium_broadcast, "\x1b[?1000h"})  # Enable mouse
-    send(viewer_pid, {:aquarium_broadcast, "\x1b[?1002h"})  # Enable mouse drag
-    send(viewer_pid, {:aquarium_broadcast, "\x1b[2J"})  # Clear screen
+  defp send_viewer_setup(viewer_pid, _terminal_config) do
+    # TEMPORARY: Simple test message instead of fish setup
+    send(viewer_pid, {:aquarium_broadcast, "Hello! SSH connection working!\r\n"})
+    send(viewer_pid, {:aquarium_broadcast, "You should see this text message.\r\n"})
     
-    # Upload fish images
-    fish_commands = SshAquarium.KittyGraphics.get_fish_images()
-    Enum.each(fish_commands, fn command ->
-      send(viewer_pid, {:aquarium_broadcast, command})
-    end)
+    # # Send initial setup commands to new viewer (exactly like Node.js)
+    # send(viewer_pid, {:aquarium_broadcast, "\x1b[?25l"})    # Hide cursor
+    # send(viewer_pid, {:aquarium_broadcast, "\x1b[?1000h"})  # Enable mouse click reporting
+    # send(viewer_pid, {:aquarium_broadcast, "\x1b[?1002h"})  # Enable mouse drag reporting
+    # send(viewer_pid, {:aquarium_broadcast, "\x1b[2J"})     # Clear screen
+    
+    # # Upload fish images (exactly like Node.js)
+    # fish_commands = SshAquarium.KittyGraphics.get_fish_images()
+    # Enum.each(fish_commands, fn command ->
+    #   send(viewer_pid, {:aquarium_broadcast, command})
+    # end)
+    
+    Logger.debug("Setup completed for new viewer")
   end
 
   defp animate_fish(fish_map, terminal_config) do
@@ -281,7 +395,7 @@ defmodule SshAquarium.SharedAquarium do
           Enum.reduce(bubbles, {[], ""}, fn bubble, {acc_bubbles, acc_output} ->
             # Clear previous bubble position
             clear_output = 
-              if bubble.prev_col and bubble.prev_row do
+              if bubble.prev_col != nil and bubble.prev_row != nil do
                 "\x1b[#{bubble.prev_row};#{bubble.prev_col}H "
               else
                 ""
@@ -330,12 +444,7 @@ defmodule SshAquarium.SharedAquarium do
         # Render fish image using Kitty graphics protocol
         fish_output = SshAquarium.KittyGraphics.render_fish(updated_fish, terminal_config)
         
-        # Add fallback emoji fish for debugging
-        emoji_col = trunc(updated_fish.px / terminal_config.cell_width) + 1
-        emoji_row = trunc((updated_fish.py + bobbing_offset) / terminal_config.cell_height) + 1
-        emoji = if updated_fish.dx > 0, do: "🐠", else: "🐟"
-        emoji_output = "\x1b[#{emoji_row};#{emoji_col}H#{emoji}"
-        
+        # No emoji fallback - match Node.js exactly
         frame_output = bubble_output <> direction_change_output <> fish_output
         
         {{fish_id, updated_fish}, [frame_output | acc_outputs]}
@@ -359,28 +468,77 @@ defmodule SshAquarium.SharedAquarium do
       mouse_x = (mouse_col - 1) * terminal_config.cell_width
       mouse_y = (mouse_row - 1) * terminal_config.cell_height
       
-      # Check collision with fish (only allow clicking own fish)
-      Enum.each(fish_map, fn {_fish_id, fish} ->
-        if mouse_x >= fish.px and mouse_x <= fish.px + 64 and
-           mouse_y >= fish.py and mouse_y <= fish.py + 36 do
-          
-          if fish.owner_id == connection_id do
-            Logger.debug("Fish #{fish.id} clicked by owner #{connection_id}")
-            # TODO: Implement fish interaction logic
+      Logger.debug("Click position in pixels: (#{mouse_x}, #{mouse_y})")
+      
+      bubble_chars = ["°", "o", "O", "•"]
+      
+      # Update fish map with any clicked fish and track collisions
+      {updated_fish_map, found_collision} = 
+        Enum.reduce(fish_map, {fish_map, false}, fn {fish_id, fish}, {acc, collision_found} ->
+          Logger.debug("Checking fish ##{fish.id} at (#{fish.px}, #{fish.py}) owned by #{fish.owner_id}")
+          if mouse_x >= fish.px and mouse_x <= fish.px + 64 and
+             mouse_y >= fish.py and mouse_y <= fish.py + 36 do
+            
+            Logger.debug("HIT: Fish ##{fish.id} collision detected")
+            
+            if fish.owner_id == connection_id do
+              Logger.debug("ALLOWED: Connection #{connection_id} clicking their own fish ##{fish.id}")
+              
+              # Spawn bubbles when clicked (like Node.js)
+              new_bubbles = for i <- 0..2 do
+                %{
+                  x: fish.px + 32 + (:rand.uniform() - 0.5) * 20, # slight random spread
+                  y: fish.py - 2 - i * 5, # staggered vertically
+                  char: Enum.random(bubble_chars),
+                  age: 0,
+                  prev_col: nil,
+                  prev_row: nil
+                }
+              end
+              
+              # Random direction change (like Node.js)
+              angles = [90, 180, 260]
+              random_angle = Enum.random(angles)
+              radians = (random_angle * :math.pi()) / 180
+              
+              # Rotate velocity vector
+              new_dx = fish.dx * :math.cos(radians) - fish.dy * :math.sin(radians)
+              new_dy = fish.dx * :math.sin(radians) + fish.dy * :math.cos(radians)
+              
+              # Update fish state
+              updated_fish = %{fish | 
+                dx: new_dx, 
+                dy: new_dy, 
+                bubbles: new_bubbles ++ fish.bubbles
+              }
+              
+              Logger.debug("Fish ##{fish.id} clicked - direction changed and bubbles spawned")
+              {Map.put(acc, fish_id, updated_fish), true}
+            else
+              Logger.debug("BLOCKED: Connection #{connection_id} tried to click fish ##{fish.id} owned by #{fish.owner_id}")
+              {acc, true}
+            end
           else
-            Logger.debug("Connection #{connection_id} tried to click fish #{fish.id} owned by #{fish.owner_id}")
+            {acc, collision_found}
           end
-        end
-      end)
+        end)
+      
+      if not found_collision do
+        Logger.debug("No collision found for click at (#{mouse_x}, #{mouse_y})")
+      end
+      
+      updated_fish_map
+    else
+      fish_map
     end
   end
 
-  defp create_poof_effect(fish, terminal_config) do
+  defp create_poof_effect(fish, terminal_config, viewers) do
     if terminal_config do
       fish_col = trunc((fish.px + 32) / terminal_config.cell_width) + 1
       fish_row = trunc((fish.py + 18) / terminal_config.cell_height) + 1
       
-      # Simple poof effect characters
+      # Simple poof effect characters (exactly like Node.js)
       poof_positions = [
         {fish_col - 1, fish_row, "*"},
         {fish_col, fish_row, "💨"},
@@ -400,10 +558,13 @@ defmodule SshAquarium.SharedAquarium do
           end
         end)
       
-      # TODO: Broadcast poof effect to viewers
-      Logger.debug("Poof effect: #{inspect(poof_output)}")
+      # Broadcast poof effect to all viewers (like Node.js)
+      if poof_output != "" do
+        broadcast_to_viewers(viewers, poof_output)
+        Logger.debug("Poof effect broadcasted to #{MapSet.size(viewers)} viewers")
+      end
       
-      # Clear poof effect after delay
+      # Clear poof effect after delay (like Node.js - 1000ms)
       spawn(fn ->
         :timer.sleep(1000)
         clear_output = 
@@ -415,8 +576,11 @@ defmodule SshAquarium.SharedAquarium do
               acc
             end
           end)
-        # TODO: Broadcast clear effect to viewers
-        Logger.debug("Poof effect cleared")
+        # Broadcast clear effect to viewers (like Node.js)
+        if clear_output != "" do
+          broadcast_to_viewers(viewers, clear_output)
+          Logger.debug("Poof effect cleared")
+        end
       end)
     end
   end

@@ -20,8 +20,6 @@ defmodule SshAquarium.SharedAquarium do
   ]
 
   @fish_per_connection 100
-  # ~60 FPS (16.66ms rounded up)
-  @animation_interval 17
 
   # Client API
 
@@ -84,7 +82,9 @@ defmodule SshAquarium.SharedAquarium do
         # Enable mouse drag reporting
         send(viewer_pid, {:aquarium_broadcast, "\x1b[?1002h"})
         # Clear screen
-        send(viewer_pid, {:aquarium_broadcast, "\x1b[2J"})
+        # send(viewer_pid, {:aquarium_broadcast, "\x1b[2J"})
+
+        send(viewer_pid, {:aquarium_broadcast, "Greetings, fish!\r\n"})
 
         # Upload images like Node.js
         fish_commands = SshAquarium.KittyGraphics.get_fish_images()
@@ -100,8 +100,7 @@ defmodule SshAquarium.SharedAquarium do
         # Set a timeout like Node.js (2 seconds)
         Logger.info("Setting 2-second timeout for terminal detection")
 
-        send(viewer_pid, {:aquarium_broadcast, "Hello from Elixir SSH Aquarium!\r\n"})
-        Process.send_after(self(), {:terminal_detection_timeout, connection_id}, 10000)
+        # Process.send_after(self(), {:terminal_detection_timeout, connection_id}, 2000)
 
         # Set up state to wait for terminal detection
         %{
@@ -285,8 +284,8 @@ defmodule SshAquarium.SharedAquarium do
   @impl true
   def handle_info({:terminal_detection_timeout, _connection_id}, state) do
     if state.terminal_config == :detecting do
-      Logger.warn("Terminal detection timeout! Using fallback dimensions...")
-      Logger.warn("Fallback config: 80x24 chars, 8x16 pixels per cell")
+      Logger.warning("Terminal detection timeout! Using fallback dimensions...")
+      Logger.warning("Fallback config: 80x24 chars, 8x16 pixels per cell")
       # Use fallback dimensions like Node.js
       handle_cast({:update_terminal_config, 80, 24, 8, 16}, state)
     else

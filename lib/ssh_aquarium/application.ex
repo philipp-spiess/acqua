@@ -13,7 +13,7 @@ defmodule SshAquarium.Application do
       # Start the SSH server
       SshAquarium.SshServer,
       # Health server for monitoring
-      {SshAquarium.HealthServer, []}
+      {SshAquarium.WwwServer, []}
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html

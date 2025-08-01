@@ -42,7 +42,7 @@ defmodule Sshd.PasswordAuthenticator.Test do
   use Sshd.PasswordAuthenticator
 
   def authenticate(username, password) do
-    username == 'tests' and password == 'testpass'
+    username == ~c"tests" and password == ~c"testpass"
   end
 end
 

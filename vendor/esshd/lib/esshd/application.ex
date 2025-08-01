@@ -6,14 +6,18 @@ defmodule Sshd.Application do
   use Application
 
   def start(_type, _args) do
-    import Supervisor.Spec, warn: false
-
     # Define workers and child supervisors to be supervised
     children = [
       # Starts a worker by calling: Sshd.Worker.start_link(arg1, arg2, arg3)
-      # worker(Sshd.Worker, [arg1, arg2, arg3]),
-      worker(Sshd.Server, []),
-      worker(Sshd.Sessions, []),
+      # {Sshd.Worker, [arg1, arg2, arg3]},
+      %{
+        id: Sshd.Server,
+        start: {Sshd.Server, :start_link, []}
+      },
+      %{
+        id: Sshd.Sessions,
+        start: {Sshd.Sessions, :start_link, []}
+      }
     ]
 
     # See http://elixir-lang.org/docs/stable/elixir/Supervisor.html

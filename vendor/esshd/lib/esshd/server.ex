@@ -54,10 +54,6 @@ defmodule Sshd.Server do
       end
     subsystems = Application.get_env(:esshd, :subsystems, [])
 
-    Logger.info("SSH daemon starting with system_dir: #{priv_dir}")
-    Logger.info("Available key files: #{inspect File.ls!(priv_dir) |> Enum.filter(&String.contains?(&1, "host"))}")
-    Logger.info("Using preferred_algorithms: #{inspect preferred_algorithms}")
-    
     case :ssh.daemon port, shell: &on_shell/2,
                            subsystems: subsystems,
                            system_dir: priv_dir,
@@ -139,7 +135,7 @@ defmodule Sshd.Server do
     else
       # drop the connection AFTER N password attempts
       if state.attempts >= 2 do
-        :ok = Logger.warn "ATTEMPT TO ACCESS FAILED for #{inspect username} from #{inspect peer_address}"
+        :ok = Logger.warning "ATTEMPT TO ACCESS FAILED for #{inspect username} from #{inspect peer_address}"
         :disconnect
       else
         {false, %{state | attempts: state.attempts + 1}}
@@ -164,7 +160,7 @@ defmodule Sshd.Server do
   @doc false
   @spec on_shell_unauthorized(String.t, peer_address, term) :: any
   def on_shell_unauthorized(username, {ip, port}, reason) do
-    Logger.warn """
+    Logger.warning """
     Authentication failure for #{inspect username} from #{inspect ip}:#{inspect port}: #{inspect reason}
     """
   end
@@ -192,13 +188,13 @@ defmodule Sshd.Server do
     pid = spawn(Module.concat([handler_module]),
                 :incoming,
                 [username, ssh_publickey, ip, port])
-    
+
     # Link the new process to the controlling process of the SSH connection
     erlang_pid = Process.whereis(:ssh_connection_handler)
     if erlang_pid do
       Process.link(pid)
     end
-    
+
     pid
   end
 end

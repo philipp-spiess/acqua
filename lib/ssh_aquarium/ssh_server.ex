@@ -17,9 +17,9 @@ defmodule SshAquarium.SshServer do
   # Server Callbacks
 
   @impl true
+  @spec init(any()) :: {:ok, %{port: 1234}}
   def init(_opts) do
-    Logger.info("SSH server will start on port #{@port}")
-    Logger.info("Connect with: ssh -p #{@port} localhost")
+    Logger.info("ssh up: ssh -p #{@port} localhost")
     {:ok, %{port: @port}}
   end
 end

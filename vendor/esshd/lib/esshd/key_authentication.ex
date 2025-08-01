@@ -67,7 +67,7 @@ defmodule Sshd.KeyAuthentication do
   defp decode(file, password) do
     {:ok, decode_ssh_file(read_ssh_file(file), password)}
   rescue
-      e -> {:error, e.message()}
+      e -> {:error, Exception.message(e)}
   end
 
   defp read_ssh_file(file) do
@@ -78,7 +78,7 @@ defmodule Sshd.KeyAuthentication do
   @spec decode_ssh_file(binary, atom) :: binary
   # Public Key
   defp decode_ssh_file(ssh_bin, :public_key),
-    do: :public_key.ssh_decode(ssh_bin, :public_key)
+    do: :ssh_file.decode(ssh_bin, :public_key)
   # Private Key
   defp decode_ssh_file(pem, password) do
     case :public_key.pem_decode(pem) do

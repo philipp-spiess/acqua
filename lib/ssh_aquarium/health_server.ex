@@ -1,4 +1,4 @@
-defmodule SshAquarium.HealthServer do
+defmodule SshAquarium.WwwServer do
   @moduledoc """
   Simple HTTP server for health checks on port 8080 using Plug.
   """
@@ -6,8 +6,8 @@ defmodule SshAquarium.HealthServer do
   use Plug.Router
   require Logger
 
-  plug :match
-  plug :dispatch
+  plug(:match)
+  plug(:dispatch)
 
   def child_spec(opts) do
     %{
@@ -21,15 +21,19 @@ defmodule SshAquarium.HealthServer do
 
   def start_link(_) do
     port = System.get_env("HEALTH_PORT", "8080") |> String.to_integer()
-    
-    Logger.info("Starting health check server on port #{port}")
-    
+
+    Logger.info("www up: http://localhost:#{port}")
+
     Plug.Cowboy.http(__MODULE__, [], port: port)
+  end
+
+  get "/" do
+    send_resp(conn, 200, "🐟")
   end
 
   get "/health" do
     response_body = Jason.encode!(%{status: "ok", service: "ssh_aquarium"})
-    
+
     conn
     |> put_resp_content_type("application/json")
     |> send_resp(200, response_body)

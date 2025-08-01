@@ -50,7 +50,7 @@ defmodule Sshd.ShellHandler.Example do
         loop(%{state | counter: state.counter + 1})
 
       {:input, ^input, msg} ->
-        :ok = Logger.warn "received unknown message: #{inspect msg}"
+        :ok = Logger.warning "received unknown message: #{inspect msg}"
         loop(%{state | counter: state.counter + 1})
     end
   end

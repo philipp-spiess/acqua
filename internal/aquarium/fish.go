@@ -9,9 +9,9 @@ const (
 	ImagePixelWidth  = 64
 	ImagePixelHeight = 36
 	BobbingAmplitude = 12
-	BobbingFrequency = 0.08
-	BubbleSpawnRate  = 0.001
-	BubbleSpeed      = 4.0
+	BobbingFrequency = 4.8  // bobbing cycles per second (was 0.08 * 60fps)
+	BubbleSpawnRate  = 0.06 // bubbles per second (was 0.001 * 60fps)
+	BubbleSpeed      = 240.0 // pixels per second (was 4.0 * 60fps)
 )
 
 type Fish struct {
@@ -44,8 +44,8 @@ func NewFish(id, ownerID uint64, termWidth, termHeight, cellWidth, cellHeight in
 		PlacementID: id,
 		PosX:        rand.Float64() * float64(termWidth-ImagePixelWidth),
 		PosY:        rand.Float64() * float64(termHeight-ImagePixelHeight),
-		VelX:        (rand.Float64() - 0.5) * 0.08 * float64(cellWidth),
-		VelY:        (rand.Float64() - 0.5) * 0.02 * float64(cellHeight),
+		VelX:        (rand.Float64() - 0.5) * 4.8 * float64(cellWidth),  // pixels per second (was 0.08 * 60fps)
+		VelY:        (rand.Float64() - 0.5) * 1.2 * float64(cellHeight), // pixels per second (was 0.02 * 60fps)
 		BobbingTime: rand.Float64() * 100,
 		Bubbles:     make([]*Bubble, 0),
 	}
@@ -79,7 +79,7 @@ func (f *Fish) Update(config *TerminalConfig, deltaTime float64) {
 	// Update bobbing
 	f.BobbingTime += BobbingFrequency * deltaTime
 	
-	// Spawn bubbles occasionally (scale rate by delta time)
+	// Spawn bubbles occasionally (rate per second)
 	if rand.Float64() < BubbleSpawnRate * deltaTime {
 		f.spawnBubble()
 	}
@@ -95,12 +95,18 @@ func (f *Fish) Render(buf *UpdateBuffer, config *TerminalConfig) {
 	}
 	f.BubblesToClear = f.BubblesToClear[:0] // Clear the slice
 	
-	// Calculate bobbing offset (match Node.js: step function, not sine wave)
+	// Calculate bobbing offset (triangular wave: 0, 6, 12, 6, 0, 6, 12, 6...)
 	bobbingOffset := 0.0
-	if int(f.BobbingTime)%2 == 0 {
-		bobbingOffset = 0
-	} else {
-		bobbingOffset = BobbingAmplitude
+	step := int(f.BobbingTime) % 4
+	switch step {
+	case 0:
+		bobbingOffset = 0                    // 0 pixels
+	case 1:
+		bobbingOffset = BobbingAmplitude / 2 // 6 pixels
+	case 2:
+		bobbingOffset = BobbingAmplitude     // 12 pixels
+	case 3:
+		bobbingOffset = BobbingAmplitude / 2 // 6 pixels
 	}
 	
 	finalY := f.PosY + bobbingOffset

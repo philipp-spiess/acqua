@@ -162,8 +162,8 @@ func (m *Manager) StartAnimation() {
 func (m *Manager) animationLoop() {
 	defer m.animationWg.Done()
 	
-	// Use 1 FPS in debug mode, 60 FPS otherwise
-	interval := 16666667 * time.Nanosecond // ~60 FPS
+	// Use 1 FPS in debug mode, 30 FPS otherwise
+	interval := 33333333 * time.Nanosecond // ~30 FPS
 	m.mu.RLock()
 	debugMode := m.debugMode
 	stopChan := m.animationStop
@@ -173,7 +173,7 @@ func (m *Manager) animationLoop() {
 		interval = time.Second // 1 FPS
 		log.Printf("Animation loop starting in debug mode (1 FPS)")
 	} else {
-		log.Printf("Animation loop starting in normal mode (60 FPS)")
+		log.Printf("Animation loop starting in normal mode (30 FPS)")
 	}
 	
 	ticker := time.NewTicker(interval)
@@ -213,7 +213,7 @@ func (m *Manager) updateAndBroadcast() {
 	
 	// Calculate delta time
 	now := time.Now()
-	deltaTime := now.Sub(m.lastUpdate).Seconds() * 60.0 // Scale to 60 FPS equivalent
+	deltaTime := now.Sub(m.lastUpdate).Seconds() // Raw delta time in seconds
 	m.lastUpdate = now
 	
 	// Copy data we need while holding lock

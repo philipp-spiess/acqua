@@ -29,6 +29,9 @@ COPY --from=builder /app/ssh_keys ./ssh_keys
 COPY --from=builder /app/fish.png .
 COPY --from=builder /app/fish-right.png .
 
+# Copy floor tile images
+COPY --from=builder /app/floor_*.png ./
+
 # Expose the SSH port and web port
 EXPOSE 1234
 EXPOSE 8080

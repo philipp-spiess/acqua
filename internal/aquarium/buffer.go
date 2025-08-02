@@ -36,6 +36,20 @@ func (b *UpdateBuffer) AddDeletePlacement(imageID int, placementID uint64) {
 	b.commands = append(b.commands, fmt.Sprintf("\x1b_Ga=d,d=i,i=%d,p=%d,q=1\x1b\\", imageID, placementID))
 }
 
+func (b *UpdateBuffer) AddFloorTilePlacement(row, col, floorImageID int, placementID uint64, width, height int) {
+	// Move cursor to position
+	b.commands = append(b.commands, fmt.Sprintf("\x1b[%d;%dH", row, col))
+	
+	// Add Kitty graphics placement command for floor tile
+	b.commands = append(b.commands, fmt.Sprintf("\x1b_Ga=p,i=%d,p=%d,c=%d,r=%d,C=1,q=1\x1b\\", 
+		floorImageID, placementID, width, height))
+}
+
+func (b *UpdateBuffer) AddStatusText(row, col int, text string) {
+	// Gray color text
+	b.commands = append(b.commands, fmt.Sprintf("\x1b[%d;%dH\x1b[90m%s\x1b[0m", row, col, text))
+}
+
 func (b *UpdateBuffer) String() string {
 	return strings.Join(b.commands, "")
 }

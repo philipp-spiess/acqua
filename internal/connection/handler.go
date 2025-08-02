@@ -18,6 +18,7 @@ type Handler struct {
 	channel     ssh.Channel
 	aquarium    *aquarium.Manager
 	connID      uint64
+	username    string
 	termType    string
 	termColumns int
 	termRows    int
@@ -41,10 +42,11 @@ func (s *streamWrapper) Close() error {
 	return s.channel.Close()
 }
 
-func New(channel ssh.Channel, aquarium *aquarium.Manager) *Handler {
+func New(channel ssh.Channel, aquarium *aquarium.Manager, username string) *Handler {
 	return &Handler{
 		channel:     channel,
 		aquarium:    aquarium,
+		username:    username,
 		termColumns: 80,
 		termRows:    24,
 		cellWidth:   8,  // default
@@ -87,7 +89,7 @@ func (h *Handler) Start() {
 	
 	// Add connection to aquarium
 	stream := &streamWrapper{channel: h.channel}
-	h.connID = h.aquarium.AddConnection(stream)
+	h.connID = h.aquarium.AddConnection(stream, h.username)
 	
 	log.Printf("Connection %d: Starting session", h.connID)
 	
@@ -264,6 +266,16 @@ func (h *Handler) uploadImages() {
 		h.uploadImage(data, 2)
 	} else if data, err := os.ReadFile("fish.png"); err == nil {
 		h.uploadImage(data, 2)
+	}
+	
+	// Upload floor tiles (image IDs 10-15)
+	for i := 0; i < 6; i++ {
+		filename := fmt.Sprintf("floor_%d.png", i)
+		if data, err := os.ReadFile(filename); err == nil {
+			h.uploadImage(data, 10+i)
+		} else {
+			log.Printf("Warning: Could not load %s: %v", filename, err)
+		}
 	}
 }
 

@@ -26,6 +26,7 @@ type Fish struct {
 	Bubbles     []*Bubble
 	LastImageID int
 	BubblesToClear []struct{ Row, Col int }
+	Username    string
 }
 
 type Bubble struct {
@@ -37,23 +38,40 @@ type Bubble struct {
 	PrevRow int
 }
 
-func NewFish(id, ownerID uint64, termWidth, termHeight, cellWidth, cellHeight int) *Fish {
+func NewFish(id, ownerID uint64, termWidth, termHeight, cellWidth, cellHeight int, username string) *Fish {
+	// Reserve space for floor tiles and status bar
+	// Floor tiles are 48x48 pixels, so they might take more than 1 row
+	tilePixelSize := 48
+	tileHeight := (tilePixelSize + cellHeight - 1) / cellHeight
+	floorHeight := tileHeight * cellHeight
+	statusHeight := cellHeight
+	usableHeight := termHeight - floorHeight - statusHeight
+	
 	return &Fish{
 		ID:          id,
 		OwnerID:     ownerID,
 		PlacementID: id,
 		PosX:        rand.Float64() * float64(termWidth-ImagePixelWidth),
-		PosY:        rand.Float64() * float64(termHeight-ImagePixelHeight),
+		PosY:        rand.Float64() * float64(usableHeight-ImagePixelHeight),
 		VelX:        (rand.Float64() - 0.5) * 4.8 * float64(cellWidth),  // pixels per second (was 0.08 * 60fps)
 		VelY:        (rand.Float64() - 0.5) * 1.2 * float64(cellHeight), // pixels per second (was 0.02 * 60fps)
 		BobbingTime: rand.Float64() * 100,
 		Bubbles:     make([]*Bubble, 0),
+		Username:    username,
 	}
 }
 
 func (f *Fish) Update(config *TerminalConfig, deltaTime float64) {
 	termPixelWidth := float64(config.Columns * config.CellWidth)
 	termPixelHeight := float64(config.Rows * config.CellHeight)
+	
+	// Reserve space for floor tiles and status bar
+	// Floor tiles are 48x48 pixels, so they might take more than 1 row
+	tilePixelSize := 48.0
+	tileHeight := (tilePixelSize + float64(config.CellHeight) - 1) / float64(config.CellHeight)
+	floorHeight := tileHeight * float64(config.CellHeight)
+	statusHeight := float64(config.CellHeight)
+	usableHeight := termPixelHeight - floorHeight - statusHeight
 	
 	// Update position with delta time scaling
 	f.PosX += f.VelX * deltaTime
@@ -68,9 +86,10 @@ func (f *Fish) Update(config *TerminalConfig, deltaTime float64) {
 		f.PosX = 0
 	}
 	
-	if f.PosY+ImagePixelHeight > termPixelHeight {
+	// Prevent fish from touching the floor (keep fish in usable area)
+	if f.PosY+ImagePixelHeight > usableHeight {
 		f.VelY = -math.Abs(f.VelY)
-		f.PosY = termPixelHeight - ImagePixelHeight
+		f.PosY = usableHeight - ImagePixelHeight
 	} else if f.PosY < 0 {
 		f.VelY = math.Abs(f.VelY)
 		f.PosY = 0
@@ -154,8 +173,25 @@ func (f *Fish) Render(buf *UpdateBuffer, config *TerminalConfig) {
 }
 
 func (f *Fish) CheckCollision(mouseX, mouseY int) bool {
+	// Calculate bobbing offset (same as in Render)
+	bobbingOffset := 0.0
+	step := int(f.BobbingTime) % 4
+	switch step {
+	case 0:
+		bobbingOffset = 0                    // 0 pixels
+	case 1:
+		bobbingOffset = BobbingAmplitude / 2 // 6 pixels
+	case 2:
+		bobbingOffset = BobbingAmplitude     // 12 pixels
+	case 3:
+		bobbingOffset = BobbingAmplitude / 2 // 6 pixels
+	}
+	
+	// Use the actual rendered position (including bobbing)
+	finalY := f.PosY + bobbingOffset
+	
 	return mouseX >= int(f.PosX) && mouseX <= int(f.PosX)+ImagePixelWidth &&
-		mouseY >= int(f.PosY) && mouseY <= int(f.PosY)+ImagePixelHeight
+		mouseY >= int(finalY) && mouseY <= int(finalY)+ImagePixelHeight
 }
 
 func (f *Fish) OnClick() {

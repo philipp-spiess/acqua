@@ -131,6 +131,9 @@ func (s *Server) handleConnection(netConn net.Conn) {
 	}
 	defer sshConn.Close()
 
+	// Get username from connection
+	username := sshConn.User()
+
 	// Discard global requests
 	go ssh.DiscardRequests(reqs)
 
@@ -148,16 +151,18 @@ func (s *Server) handleConnection(netConn net.Conn) {
 		}
 
 		// Handle session in goroutine
-		go s.handleSession(channel, requests)
+		go s.handleSession(channel, requests, username)
 	}
 }
 
-func (s *Server) handleSession(channel ssh.Channel, requests <-chan *ssh.Request) {
+func (s *Server) handleSession(channel ssh.Channel, requests <-chan *ssh.Request, username string) {
 	defer channel.Close()
 
 	// Create connection handler
-	conn := connection.New(channel, s.aquarium)
+	conn := connection.New(channel, s.aquarium, username)
 	defer conn.Close()
+	
+	log.Printf("User '%s' started aquarium session", username)
 
 	// Handle requests
 	for req := range requests {

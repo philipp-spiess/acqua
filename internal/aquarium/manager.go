@@ -1,7 +1,9 @@
 package aquarium
 
 import (
+	"fmt"
 	"log"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +20,14 @@ type Manager struct {
 	connCounter   atomic.Uint64
 	debugMode     bool
 	lastUpdate    time.Time
+	aquarium      *Aquarium
+}
+
+type Aquarium struct {
+	FloorTileID     int
+	StartTime       time.Time
+	FloorRendered   bool
+	LastStatusUpdate time.Time
 }
 
 type TerminalConfig struct {
@@ -31,6 +41,7 @@ type Connection struct {
 	ID       uint64
 	Stream   ConnectionStream
 	FishIDs  []uint64
+	Username string
 	mu       sync.Mutex
 }
 
@@ -52,13 +63,14 @@ func (m *Manager) SetDebugMode(debug bool) {
 	m.debugMode = debug
 }
 
-func (m *Manager) AddConnection(stream ConnectionStream) uint64 {
+func (m *Manager) AddConnection(stream ConnectionStream, username string) uint64 {
 	connID := m.connCounter.Add(1)
 	
 	conn := &Connection{
-		ID:      connID,
-		Stream:  stream,
-		FishIDs: make([]uint64, 0, 100),
+		ID:       connID,
+		Stream:   stream,
+		FishIDs:  make([]uint64, 0, 100),
+		Username: username,
 	}
 	
 	m.mu.Lock()
@@ -66,9 +78,16 @@ func (m *Manager) AddConnection(stream ConnectionStream) uint64 {
 	isFirst := len(m.connections) == 1
 	m.mu.Unlock()
 	
-	// If first connection, we'll start animation after terminal detection
+	// If first connection, create aquarium
 	if isFirst {
-		// Animation will be started by connection handler after terminal detection
+		now := time.Now()
+		m.aquarium = &Aquarium{
+			FloorTileID:      rand.Intn(6), // Random floor tile 0-5
+			StartTime:        now,
+			FloorRendered:    false,
+			LastStatusUpdate: now,
+		}
+		log.Printf("Created new aquarium with floor tile %d", m.aquarium.FloorTileID)
 	}
 	
 	return connID
@@ -94,12 +113,14 @@ func (m *Manager) RemoveConnection(connID uint64) {
 	
 	delete(m.connections, connID)
 	
-	// Stop animation if no more connections
+	// Stop animation and destroy aquarium if no more connections
 	if len(m.connections) == 0 && m.animationStop != nil {
+		log.Printf("Destroying aquarium - no more connections")
 		close(m.animationStop)
 		m.animationWg.Wait()
 		m.animationStop = nil
 		m.termConfig = nil
+		m.aquarium = nil
 		m.fishCounter.Store(0)
 	}
 }
@@ -134,7 +155,7 @@ func (m *Manager) AddFish(connID uint64, count int) []uint64 {
 	
 	for i := 0; i < count; i++ {
 		fishID := m.fishCounter.Add(1)
-		fish := NewFish(fishID, connID, termPixelWidth, termPixelHeight, m.termConfig.CellWidth, m.termConfig.CellHeight)
+		fish := NewFish(fishID, connID, termPixelWidth, termPixelHeight, m.termConfig.CellWidth, m.termConfig.CellHeight, conn.Username)
 		
 		m.fish[fishID] = fish
 		conn.FishIDs = append(conn.FishIDs, fishID)
@@ -241,6 +262,32 @@ func (m *Manager) updateAndBroadcast() {
 		fishCount++
 	}
 	
+	// Render floor (once) and status bar (1 FPS) if aquarium exists
+	m.mu.Lock()
+	aquarium := m.aquarium
+	renderStatus := false
+	
+	if aquarium != nil {
+		// Render floor tiles only once
+		if !aquarium.FloorRendered {
+			m.renderFloor(updateBuf, termConfig, aquarium)
+			aquarium.FloorRendered = true
+		}
+		
+		// Check if we should render status bar (1 FPS = every 1 second)
+		now := time.Now()
+		if now.Sub(aquarium.LastStatusUpdate) >= time.Second {
+			renderStatus = true
+			aquarium.LastStatusUpdate = now
+		}
+	}
+	m.mu.Unlock()
+	
+	// Render status bar only when needed (1 FPS)
+	if renderStatus {
+		m.renderStatus(updateBuf, termConfig, aquarium)
+	}
+	
 	// Get render output
 	output := updateBuf.String()
 	
@@ -300,6 +347,12 @@ func (m *Manager) GetFishCount() int {
 	return len(m.fish)
 }
 
+func (m *Manager) GetAquarium() *Aquarium {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.aquarium
+}
+
 func (m *Manager) Stop() {
 	log.Printf("Stopping aquarium manager...")
 	
@@ -348,4 +401,106 @@ func (m *Manager) Stop() {
 	m.mu.Unlock()
 	
 	log.Printf("Aquarium manager stopped")
+}
+
+func (m *Manager) renderFloor(buf *UpdateBuffer, config *TerminalConfig, aquarium *Aquarium) {
+	// Floor tiles are rendered at the second-to-last row (leaving one row for status)
+	floorRow := config.Rows - 1
+	
+	// Floor tile rendering - repeat across the width
+	// Each floor tile image is 48x48 pixels (from 3x2 grid split)
+	tilePixelSize := 48
+	tileWidth := (tilePixelSize + config.CellWidth - 1) / config.CellWidth
+	tileHeight := (tilePixelSize + config.CellHeight - 1) / config.CellHeight
+	
+	// Ensure floor tiles don't extend into status bar row
+	// If tile height > 1, we need to position floor higher to avoid overlap
+	if tileHeight > 1 {
+		floorRow = config.Rows - tileHeight
+	}
+	
+	// Calculate how many tiles we need to cover the width
+	tilesNeeded := (config.Columns + tileWidth - 1) / tileWidth
+	
+	// Floor image IDs start at 10 (after fish images 1,2)
+	floorImageID := 10 + aquarium.FloorTileID
+	
+	for i := 0; i < tilesNeeded; i++ {
+		col := i*tileWidth + 1
+		if col <= config.Columns {
+			placementID := uint64(1000 + i) // Unique placement IDs for floor tiles
+			buf.AddFloorTilePlacement(floorRow, col, floorImageID, placementID, tileWidth, tileHeight)
+		}
+	}
+}
+
+func (m *Manager) renderStatus(buf *UpdateBuffer, config *TerminalConfig, aquarium *Aquarium) {
+	// Status bar at the last row
+	statusRow := config.Rows
+	
+	// Clear the status row first
+	for i := 1; i <= config.Columns; i++ {
+		buf.AddClearCell(statusRow, i)
+	}
+	
+	// Get current fish data for username positioning
+	m.mu.RLock()
+	fishData := make([]*Fish, 0, len(m.fish))
+	for _, fish := range m.fish {
+		fishData = append(fishData, fish)
+	}
+	m.mu.RUnlock()
+	
+	// Render usernames under fish positions
+	for _, fish := range fishData {
+		// Calculate fish center position in terminal cells
+		fishCenterX := fish.PosX + ImagePixelWidth/2
+		fishCol := int(fishCenterX/float64(config.CellWidth)) + 1
+		
+		// Truncate username if needed and center it under the fish
+		username := fish.Username
+		if len(username) > 12 { // Limit username length to prevent overlap
+			username = username[:12]
+		}
+		
+		// Center username under fish
+		usernameStartCol := fishCol - len(username)/2
+		if usernameStartCol < 1 {
+			usernameStartCol = 1
+		}
+		if usernameStartCol + len(username) - 1 > config.Columns {
+			usernameStartCol = config.Columns - len(username) + 1
+			if usernameStartCol < 1 {
+				usernameStartCol = 1
+				// Truncate further if terminal is very narrow
+				if len(username) > config.Columns {
+					username = username[:config.Columns]
+				}
+			}
+		}
+		
+		buf.AddStatusText(statusRow, usernameStartCol, username)
+	}
+	
+	// Calculate connected duration
+	duration := time.Since(aquarium.StartTime)
+	durationStr := formatDuration(duration)
+	
+	// Position duration text on the right side, ensuring it doesn't overlap usernames
+	statusCol := config.Columns - len(durationStr) + 1
+	if statusCol < 1 {
+		statusCol = 1
+	}
+	
+	buf.AddStatusText(statusRow, statusCol, durationStr)
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.0fs", d.Seconds())
+	} else if d < time.Hour {
+		return fmt.Sprintf("%.0fm", d.Minutes())
+	} else {
+		return fmt.Sprintf("%.0fh", d.Hours())
+	}
 }

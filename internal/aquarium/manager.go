@@ -9,6 +9,18 @@ import (
 	"time"
 )
 
+// Dark color palette for usernames (works well on dark terminals)
+var userColors = []string{
+	"\x1b[38;5;108m", // Dark green
+	"\x1b[38;5;110m", // Dark cyan  
+	"\x1b[38;5;174m", // Dark pink
+	"\x1b[38;5;222m", // Dark yellow
+	"\x1b[38;5;141m", // Dark purple
+	"\x1b[38;5;180m", // Dark orange
+	"\x1b[38;5;117m", // Light blue
+	"\x1b[38;5;186m", // Light green
+}
+
 type Manager struct {
 	mu            sync.RWMutex
 	fish          map[uint64]*Fish
@@ -42,6 +54,7 @@ type Connection struct {
 	Stream   ConnectionStream
 	FishIDs  []uint64
 	Username string
+	Color    string
 	mu       sync.Mutex
 }
 
@@ -63,6 +76,12 @@ func (m *Manager) SetDebugMode(debug bool) {
 	m.debugMode = debug
 }
 
+func (m *Manager) assignUserColor() string {
+	// Cycle through colors based on connection count
+	colorIndex := int(m.connCounter.Load()-1) % len(userColors)
+	return userColors[colorIndex]
+}
+
 func (m *Manager) AddConnection(stream ConnectionStream, username string) uint64 {
 	connID := m.connCounter.Add(1)
 	
@@ -71,6 +90,7 @@ func (m *Manager) AddConnection(stream ConnectionStream, username string) uint64
 		Stream:   stream,
 		FishIDs:  make([]uint64, 0, 100),
 		Username: username,
+		Color:    m.assignUserColor(),
 	}
 	
 	m.mu.Lock()
@@ -155,7 +175,7 @@ func (m *Manager) AddFish(connID uint64, count int) []uint64 {
 	
 	for i := 0; i < count; i++ {
 		fishID := m.fishCounter.Add(1)
-		fish := NewFish(fishID, connID, termPixelWidth, termPixelHeight, m.termConfig.CellWidth, m.termConfig.CellHeight, conn.Username)
+		fish := NewFish(fishID, connID, termPixelWidth, termPixelHeight, m.termConfig.CellWidth, m.termConfig.CellHeight, conn.Username, conn.Color)
 		
 		m.fish[fishID] = fish
 		conn.FishIDs = append(conn.FishIDs, fishID)
@@ -479,7 +499,7 @@ func (m *Manager) renderStatus(buf *UpdateBuffer, config *TerminalConfig, aquari
 			}
 		}
 		
-		buf.AddStatusText(statusRow, usernameStartCol, username)
+		buf.AddColoredStatusText(statusRow, usernameStartCol, username, fish.Color)
 	}
 	
 	// Calculate connected duration

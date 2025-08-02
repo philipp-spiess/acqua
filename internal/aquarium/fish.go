@@ -27,6 +27,7 @@ type Fish struct {
 	LastImageID int
 	BubblesToClear []struct{ Row, Col int }
 	Username    string
+	Color       string
 }
 
 type Bubble struct {
@@ -38,7 +39,7 @@ type Bubble struct {
 	PrevRow int
 }
 
-func NewFish(id, ownerID uint64, termWidth, termHeight, cellWidth, cellHeight int, username string) *Fish {
+func NewFish(id, ownerID uint64, termWidth, termHeight, cellWidth, cellHeight int, username, color string) *Fish {
 	// Reserve space for floor tiles and status bar
 	// Floor tiles are 48x48 pixels, so they might take more than 1 row
 	tilePixelSize := 48
@@ -58,6 +59,7 @@ func NewFish(id, ownerID uint64, termWidth, termHeight, cellWidth, cellHeight in
 		BobbingTime: rand.Float64() * 100,
 		Bubbles:     make([]*Bubble, 0),
 		Username:    username,
+		Color:       color,
 	}
 }
 

@@ -50,6 +50,11 @@ func (b *UpdateBuffer) AddStatusText(row, col int, text string) {
 	b.commands = append(b.commands, fmt.Sprintf("\x1b[%d;%dH\x1b[90m%s\x1b[0m", row, col, text))
 }
 
+func (b *UpdateBuffer) AddColoredStatusText(row, col int, text, color string) {
+	// Colored text with reset
+	b.commands = append(b.commands, fmt.Sprintf("\x1b[%d;%dH%s%s\x1b[0m", row, col, color, text))
+}
+
 func (b *UpdateBuffer) String() string {
 	return strings.Join(b.commands, "")
 }

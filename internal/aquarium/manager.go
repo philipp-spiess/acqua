@@ -294,6 +294,12 @@ func (m *Manager) Broadcast(data []byte) {
 	}
 }
 
+func (m *Manager) GetFishCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.fish)
+}
+
 func (m *Manager) Stop() {
 	log.Printf("Stopping aquarium manager...")
 	

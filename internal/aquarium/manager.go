@@ -3,7 +3,6 @@ package aquarium
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -36,9 +35,7 @@ type Manager struct {
 }
 
 type Aquarium struct {
-	FloorTileID     int
 	StartTime       time.Time
-	FloorRendered   bool
 	LastStatusUpdate time.Time
 }
 
@@ -102,12 +99,10 @@ func (m *Manager) AddConnection(stream ConnectionStream, username string) uint64
 	if isFirst {
 		now := time.Now()
 		m.aquarium = &Aquarium{
-			FloorTileID:      rand.Intn(6), // Random floor tile 0-5
 			StartTime:        now,
-			FloorRendered:    false,
-			LastStatusUpdate: now,
+			LastStatusUpdate: now.Add(-3 * time.Second), // Force immediate render
 		}
-		log.Printf("Created new aquarium with floor tile %d", m.aquarium.FloorTileID)
+		log.Printf("Created new aquarium")
 	}
 	
 	return connID
@@ -282,28 +277,22 @@ func (m *Manager) updateAndBroadcast() {
 		fishCount++
 	}
 	
-	// Render floor (once) and status bar (1 FPS) if aquarium exists
+	// Render status bar (every 3 seconds) if aquarium exists
 	m.mu.Lock()
 	aquarium := m.aquarium
 	renderStatus := false
 	
 	if aquarium != nil {
-		// Render floor tiles only once
-		if !aquarium.FloorRendered {
-			m.renderFloor(updateBuf, termConfig, aquarium)
-			aquarium.FloorRendered = true
-		}
-		
-		// Check if we should render status bar (1 FPS = every 1 second)
+		// Check if we should render status bar (every 3 seconds)
 		now := time.Now()
-		if now.Sub(aquarium.LastStatusUpdate) >= time.Second {
+		if now.Sub(aquarium.LastStatusUpdate) >= 3*time.Second {
 			renderStatus = true
 			aquarium.LastStatusUpdate = now
 		}
 	}
 	m.mu.Unlock()
 	
-	// Render status bar only when needed (1 FPS)
+	// Render status bar only when needed (every 3 seconds)
 	if renderStatus {
 		m.renderStatus(updateBuf, termConfig, aquarium)
 	}
@@ -423,36 +412,6 @@ func (m *Manager) Stop() {
 	log.Printf("Aquarium manager stopped")
 }
 
-func (m *Manager) renderFloor(buf *UpdateBuffer, config *TerminalConfig, aquarium *Aquarium) {
-	// Floor tiles are rendered at the second-to-last row (leaving one row for status)
-	floorRow := config.Rows - 1
-	
-	// Floor tile rendering - repeat across the width
-	// Each floor tile image is 48x48 pixels (from 3x2 grid split)
-	tilePixelSize := 48
-	tileWidth := (tilePixelSize + config.CellWidth - 1) / config.CellWidth
-	tileHeight := (tilePixelSize + config.CellHeight - 1) / config.CellHeight
-	
-	// Ensure floor tiles don't extend into status bar row
-	// If tile height > 1, we need to position floor higher to avoid overlap
-	if tileHeight > 1 {
-		floorRow = config.Rows - tileHeight
-	}
-	
-	// Calculate how many tiles we need to cover the width
-	tilesNeeded := (config.Columns + tileWidth - 1) / tileWidth
-	
-	// Floor image IDs start at 10 (after fish images 1,2)
-	floorImageID := 10 + aquarium.FloorTileID
-	
-	for i := 0; i < tilesNeeded; i++ {
-		col := i*tileWidth + 1
-		if col <= config.Columns {
-			placementID := uint64(1000 + i) // Unique placement IDs for floor tiles
-			buf.AddFloorTilePlacement(floorRow, col, floorImageID, placementID, tileWidth, tileHeight)
-		}
-	}
-}
 
 func (m *Manager) renderStatus(buf *UpdateBuffer, config *TerminalConfig, aquarium *Aquarium) {
 	// Status bar at the last row

@@ -268,15 +268,6 @@ func (h *Handler) uploadImages() {
 		h.uploadImage(data, 2)
 	}
 	
-	// Upload floor tiles (image IDs 10-15)
-	for i := 0; i < 6; i++ {
-		filename := fmt.Sprintf("floor_%d.png", i)
-		if data, err := os.ReadFile(filename); err == nil {
-			h.uploadImage(data, 10+i)
-		} else {
-			log.Printf("Warning: Could not load %s: %v", filename, err)
-		}
-	}
 }
 
 func (h *Handler) uploadImage(data []byte, imageID int) {
